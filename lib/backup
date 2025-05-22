@@ -1,0 +1,253 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
+
+void main() => runApp(const MyApp());
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Weather App',
+      home: const WeatherScreen(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class WeatherScreen extends StatefulWidget {
+  const WeatherScreen({super.key});
+
+  @override
+  _WeatherScreenState createState() => _WeatherScreenState();
+}
+
+class _WeatherScreenState extends State<WeatherScreen> {
+  final String apiKey = "0484e6aca80eb52da34950b202aa46bf";
+  Map<String, dynamic>? weatherData;
+  String city = "Loading...";
+
+  Future<Position> _getCurrentLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Location services are disabled.');
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('Location permissions are permanently denied.');
+    }
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission != LocationPermission.whileInUse &&
+          permission != LocationPermission.always) {
+        throw Exception('Location permissions are denied.');
+      }
+    }
+
+    return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high);
+  }
+
+  Future<void> fetchWeatherByLocation() async {
+    try {
+      final position = await _getCurrentLocation();
+      final lat = position.latitude;
+      final lon = position.longitude;
+
+      final url =
+          "https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$apiKey&units=metric";
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        setState(() {
+          weatherData = decoded;
+          city = decoded['name'] ?? 'Unknown';
+        });
+      } else {
+        throw Exception(
+            "Failed to fetch data. Status: ${response.statusCode}, Body: ${response.body}");
+      }
+    } catch (e) {
+      debugPrint("Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.toString()}")),
+      );
+    }
+  }
+
+  String getFormattedTime(int timestamp) {
+    final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+    return DateFormat('hh:mm a').format(date);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    fetchWeatherByLocation();
+  }
+
+  @override
+Widget build(BuildContext context) {
+  final themeColor = const Color(0xFF1878F3);
+
+  return Scaffold(
+    backgroundColor: Colors.white,
+    body: SafeArea(
+      child: weatherData == null
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: themeColor,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(30),
+                      bottomRight: Radius.circular(30),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on, color: Colors.white, size: 26),
+                          const SizedBox(width: 8),
+                          Text(
+                            city,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: fetchWeatherByLocation,
+                        icon: const Icon(Icons.refresh, color: Colors.white),
+                        tooltip: "Refresh Weather",
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        Image.network(
+                          "https://openweathermap.org/img/wn/${weatherData!['weather'][0]['icon']}@4x.png",
+                          width: 150,
+                          height: 150,
+                          fit: BoxFit.cover,
+                        ),
+                        Text(
+                          "${weatherData!['main']['temp'].round()}°C",
+                          style: TextStyle(
+                            fontSize: 60,
+                            fontWeight: FontWeight.bold,
+                            color: themeColor,
+                          ),
+                        ),
+                        Text(
+                          toBeginningOfSentenceCase(weatherData!['weather'][0]['description']) ?? '',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 20),
+                          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: themeColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.2),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              const Text(
+                                "Weather Info",
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                children: [
+                                  _buildWeatherDetail(
+                                    icon: Icons.thermostat_outlined,
+                                    label: "Feels Like",
+                                    value: "${weatherData!['main']['feels_like']}°C",
+                                  ),
+                                  _buildWeatherDetail(
+                                    icon: Icons.water_drop_outlined,
+                                    label: "Humidity",
+                                    value: "${weatherData!['main']['humidity']}%",
+                                  ),
+                                  _buildWeatherDetail(
+                                    icon: Icons.air_outlined,
+                                    label: "Wind",
+                                    value: "${weatherData!['wind']['speed']} m/s",
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    ),
+  );
+}
+
+Widget _buildWeatherDetail({
+  required IconData icon,
+  required String label,
+  required String value,
+}) {
+  return Column(
+    children: [
+      Icon(icon, size: 28, color: Colors.black87),
+      const SizedBox(height: 6),
+      Text(value,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+            fontSize: 16,
+          )),
+      Text(
+        label,
+        style: const TextStyle(
+          fontSize: 14,
+          color: Colors.black54,
+        ),
+      ),
+    ],
+  );
+}
+
+}
