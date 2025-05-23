@@ -66,7 +66,7 @@ class WeatherScreen extends StatefulWidget {
 }
 
 class _WeatherScreenState extends State<WeatherScreen> {
-  final String apiKey = "0484e6aca80eb52da34950b202aa46bf";
+  final String apiKey = "YOUR API KEY HERE";
   Map<String, dynamic>? weatherData;
   String city = "Loading...";
   Position? _currentPosition;
